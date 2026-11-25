@@ -1,0 +1,19 @@
+configuration:
+  address:
+    name: Tunnel address
+    description: Address of this hub inside the Dolomiti Connect tunnel, assigned by the Alba panel.
+  private_key:
+    name: Private key
+    description: WireGuard private key of this hub, from the configuration supplied by Alba.
+  server_public_key:
+    name: Concentrator public key
+    description: Public key of the Alba concentrator.
+  endpoint:
+    name: Concentrator
+    description: Concentrator host and port (e.g. connect.example.com:51820).
+  tech_network:
+    name: Technician network
+    description: Network the Alba technicians connect from. Do not change.
+  allowed_tcp_ports:
+    name: Allowed ports
+    description: Home Assistant ports reachable by technicians (standard 80). Do not change.

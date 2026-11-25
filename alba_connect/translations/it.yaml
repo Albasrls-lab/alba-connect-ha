@@ -1,0 +1,19 @@
+configuration:
+  address:
+    name: Indirizzo nel tunnel
+    description: Indirizzo della centrale nel tunnel Dolomiti Connect (es. 10.88.1.12), assegnato dal pannello Alba.
+  private_key:
+    name: Chiave privata
+    description: Chiave privata WireGuard della centrale. Si trova solo nella configurazione consegnata da Alba.
+  server_public_key:
+    name: Chiave pubblica del concentratore
+    description: Chiave pubblica del concentratore Alba.
+  endpoint:
+    name: Concentratore
+    description: Indirizzo e porta del concentratore (es. connect.esempio.it:51820).
+  tech_network:
+    name: Rete dei tecnici
+    description: Rete da cui possono arrivare i tecnici Alba. Non modificare.
+  allowed_tcp_ports:
+    name: Porte consentite
+    description: Porte di Home Assistant raggiungibili dai tecnici (standard 80). Non modificare.

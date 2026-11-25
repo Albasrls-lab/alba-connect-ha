@@ -1,0 +1,26 @@
+name: Alba Connect
+version: "0.4.0"
+slug: alba_connect
+description: Assistenza remota Alba (Dolomiti Connect) – tunnel WireGuard in uscita, nessuna porta aperta
+url: https://github.com/albasrls-lab/alba-connect-ha
+arch:
+  - amd64
+  - aarch64
+startup: services
+boot: auto
+init: false
+stage: stable
+host_network: true
+privileged:
+  - NET_ADMIN
+apparmor: false
+options:
+  tech_network: 10.88.200.0/24
+  allowed_tcp_ports: "80"
+schema:
+  address: str?
+  private_key: password?
+  server_public_key: str?
+  endpoint: str?
+  tech_network: str
+  allowed_tcp_ports: str

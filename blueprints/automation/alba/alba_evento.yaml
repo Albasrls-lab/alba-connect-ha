@@ -1,0 +1,122 @@
+blueprint:
+  name: "Alba – evento dalla casa"
+  description: >-
+    Quando succede qualcosa in casa avvisa la famiglia (notify.famiglia, con il pulsante «Ho visto»)
+    e il centro eventi Alba. Se nessuno preme «Ho visto», dopo il tempo previsto dal centro
+    (es. 15 minuti per la porta di notte) viene avvisato il reperibile Alba. Fumo e CO: subito.
+    Non sostituisce il dispositivo di telesoccorso della centrale H24.
+  domain: automation
+  source_url: https://github.com/albasrls-lab/alba-connect-ha/blob/main/blueprints/automation/alba/alba_evento.yaml
+  input:
+    quando:
+      name: Quando
+      description: "Cosa fa partire l'evento: sensore fumo acceso, pulsante premuto, porta aperta, UPS a batteria…"
+      selector:
+        trigger: {}
+    tipo:
+      name: Tipo di evento
+      selector:
+        select:
+          options:
+            - { label: "Fumo", value: fumo }
+            - { label: "Monossido di carbonio (CO)", value: co }
+            - { label: "Pulsante d'aiuto", value: aiuto }
+            - { label: "Porta aperta di notte", value: porta_notte }
+            - { label: "Perdita d'acqua", value: acqua }
+            - { label: "Mancanza di corrente (UPS a batteria)", value: corrente }
+            - { label: "Presa spenta per sicurezza", value: presa }
+            - { label: "Batteria bassa", value: batteria }
+    stato:
+      name: L'evento inizia o finisce?
+      description: "«Rientrato» chiude l'evento se nessuno l'ha ancora preso in carico (es. corrente tornata)."
+      default: attivo
+      selector:
+        select:
+          options:
+            - { label: "Inizia", value: attivo }
+            - { label: "Rientrato", value: risolto }
+    messaggio:
+      name: Messaggio per la famiglia
+      default: ""
+      description: "Es. «Porta d'ingresso aperta di notte a casa della mamma». Vuoto = nessuna notifica alla famiglia."
+      selector:
+        text: {}
+    dalle:
+      name: Solo dalle
+      description: "Uguale a «Fino alle» = sempre."
+      default: "00:00:00"
+      selector:
+        time: {}
+    alle:
+      name: Fino alle
+      default: "00:00:00"
+      selector:
+        time: {}
+
+mode: single
+max_exceeded: silent
+
+variables:
+  tipo: !input tipo
+  stato: !input stato
+  messaggio: !input messaggio
+  dalle: !input dalle
+  alle: !input alle
+  critico: "{{ tipo in ['fumo', 'co', 'aiuto'] }}"
+
+triggers: !input quando
+
+conditions:
+  - condition: template
+    value_template: >-
+      {% set n = now().strftime('%H:%M:%S') %}
+      {% if dalle == alle %}true
+      {% elif dalle < alle %}{{ dalle <= n < alle }}
+      {% else %}{{ n >= dalle or n < alle }}{% endif %}
+
+actions:
+  - action: rest_command.alba_evento
+    continue_on_error: true
+    data:
+      tipo: "{{ tipo }}"
+      stato: "{{ stato }}"
+      testo: "{{ messaggio }}"
+  - if:
+      - condition: template
+        value_template: "{{ messaggio | length > 0 }}"
+    then:
+      - if:
+          - condition: template
+            value_template: "{{ critico and stato == 'attivo' }}"
+        then:
+          - action: notify.famiglia
+            continue_on_error: true
+            data:
+              title: "Attenzione"
+              message: "{{ messaggio }}"
+              data:
+                tag: "alba_{{ tipo }}"
+                actions:
+                  - action: "ALBA_OK_{{ tipo | upper }}"
+                    title: "Ho visto"
+                push:
+                  sound:
+                    name: default
+                    critical: 1
+                    volume: 1.0
+                ttl: 0
+                priority: high
+                channel: alarm_stream
+        else:
+          - action: notify.famiglia
+            continue_on_error: true
+            data:
+              title: "Casa"
+              message: "{{ messaggio }}"
+              data:
+                tag: "alba_{{ tipo }}"
+                actions: "{{ [{'action': 'ALBA_OK_' ~ (tipo | upper), 'title': 'Ho visto'}] if stato == 'attivo' else [] }}"
+                push:
+                  interruption-level: time-sensitive
+                ttl: 0
+                priority: high

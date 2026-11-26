@@ -1,0 +1,166 @@
+blueprint:
+  name: "Alba – avviso di inattività"
+  description: >-
+    Nessun movimento entro l'ora del mattino, oppure per troppe ore durante il giorno:
+    avvisa la famiglia (con «Ho visto») e il centro eventi Alba, che dopo 30 minuti senza
+    conferma avvisa il reperibile. Quando il movimento riprende l'avviso rientra da solo.
+    Si sospende con l'interruttore «Fuori casa». Senza telecamere. Non è un dispositivo medico.
+  domain: automation
+  source_url: https://github.com/albasrls-lab/alba-connect-ha/blob/main/blueprints/automation/alba/alba_inattivita.yaml
+  input:
+    sensori:
+      name: Sensori di movimento e presenza
+      description: "Sensori delle stanze usate ogni giorno (cucina, bagno, corridoio). Anche contatti di porte interne o frigorifero."
+      selector:
+        entity:
+          multiple: true
+          filter:
+            - domain: binary_sensor
+    ora_mattino:
+      name: Movimento entro le
+      default: "10:00:00"
+      selector:
+        time: {}
+    ore_giorno:
+      name: Ore senza movimento durante il giorno
+      default: 4
+      selector:
+        number:
+          min: 1
+          max: 12
+          unit_of_measurement: ore
+    giorno_da:
+      name: Controllo di giorno dalle
+      default: "08:00:00"
+      selector:
+        time: {}
+    giorno_a:
+      name: Controllo di giorno fino alle
+      default: "21:00:00"
+      selector:
+        time: {}
+    nome:
+      name: Come chiamare la persona nelle notifiche
+      default: "la casa"
+      description: "Es. «la mamma». Resta solo nelle notifiche della famiglia, non va al centro Alba."
+      selector:
+        text: {}
+
+mode: queued
+max: 10
+
+variables:
+  ore: !input ore_giorno
+  giorno_da: !input giorno_da
+  giorno_a: !input giorno_a
+  nome: !input nome
+  ultimo: "{{ state_attr('input_datetime.alba_ultimo_movimento', 'timestamp') | float(0) }}"
+  fuori: "{{ is_state('input_boolean.alba_fuori_casa', 'on') }}"
+  attivo: "{{ is_state('input_boolean.alba_inattivita_attiva', 'on') }}"
+
+triggers:
+  - trigger: state
+    entity_id: !input sensori
+    to: "on"
+    id: movimento
+  - trigger: time
+    at: !input ora_mattino
+    id: mattino
+  - trigger: time_pattern
+    minutes: "/15"
+    id: controllo
+
+actions:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: movimento
+        sequence:
+          - action: input_datetime.set_datetime
+            target:
+              entity_id: input_datetime.alba_ultimo_movimento
+            data:
+              timestamp: "{{ now().timestamp() }}"
+          - if:
+              - condition: template
+                value_template: "{{ attivo }}"
+            then:
+              - action: input_boolean.turn_off
+                target:
+                  entity_id: input_boolean.alba_inattivita_attiva
+              - repeat:
+                  for_each: [inattivita_mattino, inattivita_giorno]
+                  sequence:
+                    - action: rest_command.alba_evento
+                      continue_on_error: true
+                      data:
+                        tipo: "{{ repeat.item }}"
+                        stato: risolto
+              - action: notify.famiglia
+                continue_on_error: true
+                data:
+                  title: "Casa"
+                  message: "Movimento ripreso a {{ nome }}."
+                  data:
+                    tag: alba_inattivita
+      - conditions:
+          - condition: trigger
+            id: mattino
+          - condition: template
+            value_template: "{{ not fuori and not attivo and ultimo < as_timestamp(today_at('05:00')) }}"
+        sequence:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.alba_inattivita_attiva
+          - action: rest_command.alba_evento
+            continue_on_error: true
+            data:
+              tipo: inattivita_mattino
+              testo: "Nessun movimento dalle 5"
+          - action: notify.famiglia
+            continue_on_error: true
+            data:
+              title: "Attenzione"
+              message: "Nessun movimento questa mattina a {{ nome }}."
+              data:
+                tag: alba_inattivita
+                actions:
+                  - action: ALBA_OK_INATTIVITA_MATTINO
+                    title: "Ho visto"
+                push:
+                  interruption-level: time-sensitive
+                ttl: 0
+                priority: high
+      - conditions:
+          - condition: trigger
+            id: controllo
+          - condition: time
+            after: !input giorno_da
+            before: !input giorno_a
+          - condition: template
+            value_template: >-
+              {{ not fuori and not attivo and ultimo >= as_timestamp(today_at('05:00'))
+                 and now().timestamp() - ultimo > ore * 3600 }}
+        sequence:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.alba_inattivita_attiva
+          - action: rest_command.alba_evento
+            continue_on_error: true
+            data:
+              tipo: inattivita_giorno
+              testo: "Nessun movimento da {{ ((now().timestamp() - ultimo) / 3600) | round(1) }} ore"
+          - action: notify.famiglia
+            continue_on_error: true
+            data:
+              title: "Attenzione"
+              message: "Nessun movimento da più di {{ ore }} ore a {{ nome }}."
+              data:
+                tag: alba_inattivita
+                actions:
+                  - action: ALBA_OK_INATTIVITA_GIORNO
+                    title: "Ho visto"
+                push:
+                  interruption-level: time-sensitive
+                ttl: 0
+                priority: high
